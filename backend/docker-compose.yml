@@ -7,12 +7,6 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
-    env_file:
-      - .env
-    volumes:
-      - .:/app
-      - /app/.venv
-      - ./logs:/app/logs
     restart: unless-stopped
     depends_on:
       redis:
@@ -20,10 +14,27 @@ services:
     networks:
       - app-network
     environment:
+      # Database
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+
+      # Redis
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=
-      - LOG_LEVEL=INFO
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+
+      # Application
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
+      - WEBHOOK_BASE_URL=${WEBHOOK_BASE_URL:-http://localhost:8000}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENV_MODE=${ENV_MODE:-production}
+
+      # Add any other required API keys or variables here
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      
     logging:
       driver: "json-file"
       options:
@@ -43,12 +54,6 @@ services:
       context: .
       dockerfile: Dockerfile
     command: uv run dramatiq --skip-logging --processes 4 --threads 4 run_agent_background
-    env_file:
-      - .env
-    volumes:
-      - .:/app
-      - /app/.venv
-      - ./worker-logs:/app/logs
     restart: unless-stopped
     depends_on:
       redis:
@@ -56,10 +61,25 @@ services:
     networks:
       - app-network
     environment:
+      # Database
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+
+      # Redis
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=
-      - LOG_LEVEL=INFO
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+
+      # Application
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENV_MODE=${ENV_MODE:-production}
+
+      # Add any other required API keys or variables here
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+
     logging:
       driver: "json-file"
       options:
@@ -72,16 +92,15 @@ services:
       start_period: 40s
 
   redis:
-    image: redis:8-alpine
+    image: redis:7-alpine # Using a more common version, but 8-alpine is also fine
     ports:
-      - "127.0.0.1:6379:6379"
+      - "6379:6379"
     volumes:
       - redis_data:/data
-      - ./services/docker/redis.conf:/usr/local/etc/redis/redis.conf:ro
     restart: unless-stopped
     networks:
       - app-network
-    command: redis-server /usr/local/etc/redis/redis.conf --appendonly yes --bind 0.0.0.0 --protected-mode no --maxmemory 8gb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --bind 0.0.0.0 --protected-mode no
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
