@@ -1,0 +1,158 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: suna-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - redis_data:/data
+    networks:
+      - suna_network
+
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: suna-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Database
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      
+      # Redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_SSL=${REDIS_SSL:-false}
+      
+      # AI Providers
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      
+      # Optional Services
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY:-}
+      - DAYTONA_API_URL=${DAYTONA_API_URL:-}
+      - DAYTONA_API_KEY=${DAYTONA_API_KEY:-}
+      
+      # Background Processing
+      - QSTASH_URL=${QSTASH_URL:-}
+      - QSTASH_TOKEN=${QSTASH_TOKEN:-}
+      
+      # Application
+      - ENV_MODE=${ENV_MODE:-production}
+      - WEBHOOK_BASE_URL=${WEBHOOK_BASE_URL:-http://localhost:8000}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - suna_network
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_cache:/app/.cache
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+        - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        - NEXT_PUBLIC_ENV_MODE=${NEXT_PUBLIC_ENV_MODE:-production}
+    container_name: suna-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://backend:8000}
+      - NEXT_PUBLIC_ENV_MODE=${NEXT_PUBLIC_ENV_MODE:-production}
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - suna_network
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: suna-worker
+    restart: unless-stopped
+    command: ["uv", "run", "dramatiq", "--processes", "4", "--threads", "4", "run_agent_background"]
+    environment:
+      # Same as backend
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_SSL=${REDIS_SSL:-false}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY:-}
+      - DAYTONA_API_URL=${DAYTONA_API_URL:-}
+      - DAYTONA_API_KEY=${DAYTONA_API_KEY:-}
+      - QSTASH_URL=${QSTASH_URL:-}
+      - QSTASH_TOKEN=${QSTASH_TOKEN:-}
+      - ENV_MODE=${ENV_MODE:-production}
+      - WEBHOOK_BASE_URL=${WEBHOOK_BASE_URL:-http://localhost:8000}
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - suna_network
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_cache:/app/.cache
+
+volumes:
+  redis_data:
+    driver: local
+  backend_uploads:
+    driver: local
+  backend_cache:
+    driver: local
+
+networks:
+  suna_network:
+    driver: bridge
+    name: suna_network
