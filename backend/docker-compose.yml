@@ -40,7 +40,8 @@ services:
         max-size: "10m"
         max-file: "3"
     healthcheck:
-      test: ["CMD", "curl", "-f"]
+      # This line is corrected to point to the proper health check endpoint
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health-docker"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -91,7 +92,7 @@ services:
       start_period: 40s
 
   redis:
-    image: redis:7-alpine # Using a more common version, but 8-alpine is also fine
+    image: redis:7-alpine
     ports:
       - "6379:6379"
     volumes:
