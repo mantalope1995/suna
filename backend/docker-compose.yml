@@ -25,7 +25,6 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
 
       # Application
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
       - WEBHOOK_BASE_URL=${WEBHOOK_BASE_URL:-http://localhost:8000}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - ENV_MODE=${ENV_MODE:-production}
